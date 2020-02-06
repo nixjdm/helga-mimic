@@ -7,7 +7,7 @@ import time
 
 from helga import settings, log
 from helga.db import db
-from helga.plugins import Command, ResponseNotReady
+from helga.plugins import Command, ResponseNotReady, registry
 
 from helga_alias import find_alias, is_alias
 from helga_twitter import tweet
@@ -195,14 +195,47 @@ class MimicPlugin(Command):
 
         client.msg(channel, 'build done!')
 
+    def other_command(self, nick, message, whitelist=None):
+        """This method reads all of the plugins' commands and aliases
+        to determin if another command was intended to be used.
+
+        Without this mimic would often reply to e.g. `helga haiku ...`
+        along with that other plugin.
+        """
+        prefix = NICK + " "
+        if message.startswith(prefix):
+            message = message[len(prefix):]
+        else:
+            # Bail early
+            return False
+
+        commands = set()
+        for p in registry.plugins.values():
+            if isinstance(p, Command):  # E.g. helga-twitter (0.4.3)
+                commands = commands.union({p.command})
+                commands = commands.union(set(p.aliases))
+            else:  # E.g. helga-poems (0.2.0)
+                p_obj = p.func_dict["_plugins"][0]
+                if isinstance(p_obj, Command):
+                    commands = commands.union({p_obj.command})
+                    commands = commands.union(set(p_obj.aliases))
+
+        if whitelist:
+            commands.difference_update(whitelist)
+
+        return any(message.startswith(command) for command in commands)
+
+
     def preprocess(self, client, channel, nick, message):
         """
         listen out for our nick. if mentioned, we'll respond with a
         (hopefully) relevant statement.
         """
-
-        if NICK in message and not message.startswith(
-                getattr(settings, 'COMMAND_PREFIX_CHAR')
+        whitelist = [self.command] + self.aliases
+        if (
+            NICK in message
+            and not self.other_command(nick, message, whitelist=whitelist)
+            and not message.startswith(getattr(settings, "COMMAND_PREFIX_CHAR"))
         ):
             response = bot_say(seed=message)
             potential_nick_matches = ADDRESSING_POSSIBLE_NICK.match(response)
