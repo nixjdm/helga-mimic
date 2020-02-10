@@ -238,6 +238,8 @@ class MimicPlugin(Command):
             and not message.startswith(getattr(settings, "COMMAND_PREFIX_CHAR"))
         ):
             response = bot_say(seed=message)
+            if response == "I dont know enough to answer you yet!":
+                return None
             potential_nick_matches = ADDRESSING_POSSIBLE_NICK.match(response)
 
             if potential_nick_matches:
